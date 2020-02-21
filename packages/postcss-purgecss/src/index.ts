@@ -12,6 +12,12 @@ const purgeCSSPlugin = postcss.plugin<PostCssUserDefinedOptions>(
       const purgeCSS = new PurgeCSS();
       const options = parseUserOptions<PostCssUserDefinedOptions>(opts);
 
+      if (opts && typeof opts.contentFunction === "function") {
+        options.content = opts.contentFunction(
+          (root.source && root.source.input.file) || ""
+        );
+      }
+
       purgeCSS.options = options;
 
       const { content, extractors } = options;
@@ -27,7 +33,7 @@ const purgeCSSPlugin = postcss.plugin<PostCssUserDefinedOptions>(
         fileFormatContents,
         extractors
       );
-      const cssRawSelectors = purgeCSS.extractSelectorsFromString(
+      const cssRawSelectors = await purgeCSS.extractSelectorsFromString(
         rawFormatContents,
         extractors
       );
