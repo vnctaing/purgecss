@@ -29,6 +29,17 @@ export interface ExtractorResultDetailed {
   undetermined: string[];
 }
 
+export interface ExtractorResultDetailedSet {
+  attributes: {
+    names: Set<string>;
+    values: Set<string>;
+  };
+  classes: Set<string>;
+  ids: Set<string>;
+  tags: Set<string>;
+  undetermined: Set<string>;
+}
+
 export type ExtractorResult = ExtractorResultDetailed | string[];
 
 export type ExtractorFunction = (content: string) => ExtractorResult;

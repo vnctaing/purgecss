@@ -3,7 +3,7 @@ import PurgeCSSv1 from "purgecss";
 import PurgeCSSv2 from "../purgecss";
 import purgeFromHtmlv1 from "purgecss-from-html";
 import purgeFromHtmlv2 from "../purgecss-from-html";
-import vkbeautify from "./lib/vkbeautify";
+import vkbeautify from "./libjs/vkbeautify";
 
 const printResult = (title: string, startTime: number, fileLength: number) => {
   console.log([

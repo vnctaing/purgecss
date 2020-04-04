@@ -19,7 +19,7 @@ import {
   AtRules,
   RawCSS,
   UserDefinedOptions,
-  ExtractorResultDetailed,
+  ExtractorResultDetailedSet,
 } from "./types";
 
 import {
@@ -66,20 +66,29 @@ export async function setOptions(
 async function extractSelectors(
   content: string,
   extractor: ExtractorFunction
-): Promise<ExtractorResultDetailed> {
+): Promise<ExtractorResultDetailedSet> {
   const selectors = await extractor(content);
   return Array.isArray(selectors)
     ? {
         attributes: {
-          names: [],
-          values: [],
+          names: new Set(),
+          values: new Set(),
         },
-        classes: [],
-        ids: [],
-        tags: [],
-        undetermined: selectors,
+        classes: new Set(),
+        ids: new Set(),
+        tags: new Set(),
+        undetermined: new Set(selectors),
       }
-    : selectors;
+    : {
+        attributes: {
+          names: new Set(selectors.attributes.names),
+          values: new Set(selectors.attributes.values),
+        },
+        classes: new Set(selectors.classes),
+        ids: new Set(selectors.ids),
+        tags: new Set(selectors.tags),
+        undetermined: new Set(selectors.undetermined),
+      };
 }
 
 /**
@@ -140,27 +149,30 @@ function hasIgnoreAnnotation(rule: postcss.Rule): boolean {
  * @param extractorSelectorsB extractor selectors B
  */
 export function mergeExtractorSelectors(
-  extractorSelectorsA: ExtractorResultDetailed,
-  extractorSelectorsB: ExtractorResultDetailed
-): ExtractorResultDetailed {
+  extractorSelectorsA: ExtractorResultDetailedSet,
+  extractorSelectorsB: ExtractorResultDetailedSet
+): ExtractorResultDetailedSet {
   return {
     attributes: {
-      names: [
+      names: new Set([
         ...extractorSelectorsA.attributes.names,
         ...extractorSelectorsB.attributes.names,
-      ],
-      values: [
+      ]),
+      values: new Set([
         ...extractorSelectorsA.attributes.values,
         ...extractorSelectorsB.attributes.values,
-      ],
+      ]),
     },
-    classes: [...extractorSelectorsA.classes, ...extractorSelectorsB.classes],
-    ids: [...extractorSelectorsA.ids, ...extractorSelectorsB.ids],
-    tags: [...extractorSelectorsA.tags, ...extractorSelectorsB.tags],
-    undetermined: [
+    classes: new Set([
+      ...extractorSelectorsA.classes,
+      ...extractorSelectorsB.classes,
+    ]),
+    ids: new Set([...extractorSelectorsA.ids, ...extractorSelectorsB.ids]),
+    tags: new Set([...extractorSelectorsA.tags, ...extractorSelectorsB.tags]),
+    undetermined: new Set([
       ...extractorSelectorsA.undetermined,
       ...extractorSelectorsB.undetermined,
-    ],
+    ]),
   };
 }
 
@@ -179,46 +191,40 @@ function stripQuotes(str: string): string {
  */
 function isAttributeFound(
   attributeNode: selectorParser.Attribute,
-  selectors: ExtractorResultDetailed
+  selectors: ExtractorResultDetailedSet
 ): boolean {
   if (
-    !selectors.attributes.names.includes(attributeNode.attribute) &&
-    !selectors.undetermined.includes(attributeNode.attribute)
+    !selectors.attributes.names.has(attributeNode.attribute) &&
+    !selectors.undetermined.has(attributeNode.attribute)
   ) {
     return false;
   }
 
+  const values = Array.from(selectors.attributes.values);
+  const undetermined = Array.from(selectors.undetermined);
+
   switch (attributeNode.operator) {
     case "$=":
       return (
-        selectors.attributes.values.some((str) =>
-          str.endsWith(attributeNode.value!)
-        ) ||
-        selectors.undetermined.some((str) => str.endsWith(attributeNode.value!))
+        values.some((str) => str.endsWith(attributeNode.value!)) ||
+        undetermined.some((str) => str.endsWith(attributeNode.value!))
       );
     case "~=":
     case "*=":
       return (
-        selectors.attributes.values.some((str) =>
-          str.includes(attributeNode.value!)
-        ) ||
-        selectors.undetermined.some((str) => str.includes(attributeNode.value!))
+        values.some((str) => str.includes(attributeNode.value!)) ||
+        undetermined.some((str) => str.includes(attributeNode.value!))
       );
     case "=":
       return (
-        selectors.attributes.values.some(
-          (str) => str === attributeNode.value
-        ) || selectors.undetermined.some((str) => str === attributeNode.value!)
+        values.some((str) => str === attributeNode.value) ||
+        undetermined.some((str) => str === attributeNode.value!)
       );
     case "|=":
     case "^=":
       return (
-        selectors.attributes.values.some((str) =>
-          str.startsWith(attributeNode.value!)
-        ) ||
-        selectors.undetermined.some((str) =>
-          str.startsWith(attributeNode.value!)
-        )
+        values.some((str) => str.startsWith(attributeNode.value!)) ||
+        undetermined.some((str) => str.startsWith(attributeNode.value!))
       );
     default:
       return true;
@@ -232,11 +238,11 @@ function isAttributeFound(
  */
 function isClassFound(
   classNode: selectorParser.ClassName,
-  selectors: ExtractorResultDetailed
+  selectors: ExtractorResultDetailedSet
 ): boolean {
   return (
-    selectors.classes.includes(classNode.value) ||
-    selectors.undetermined.includes(classNode.value)
+    selectors.classes.has(classNode.value) ||
+    selectors.undetermined.has(classNode.value)
   );
 }
 
@@ -247,11 +253,11 @@ function isClassFound(
  */
 function isIdentifierFound(
   identifierNode: selectorParser.Identifier,
-  selectors: ExtractorResultDetailed
+  selectors: ExtractorResultDetailedSet
 ): boolean {
   return (
-    selectors.ids.includes(identifierNode.value) ||
-    selectors.undetermined.includes(identifierNode.value)
+    selectors.ids.has(identifierNode.value) ||
+    selectors.undetermined.has(identifierNode.value)
   );
 }
 
@@ -262,11 +268,11 @@ function isIdentifierFound(
  */
 function isTagFound(
   tagNode: selectorParser.Tag,
-  selectors: ExtractorResultDetailed
+  selectors: ExtractorResultDetailedSet
 ): boolean {
   return (
-    selectors.tags.includes(tagNode.value) ||
-    selectors.undetermined.includes(tagNode.value)
+    selectors.tags.has(tagNode.value) ||
+    selectors.undetermined.has(tagNode.value)
   );
 }
 
@@ -387,16 +393,16 @@ class PurgeCSS {
   public async extractSelectorsFromFiles(
     files: string[],
     extractors: Extractors[]
-  ): Promise<ExtractorResultDetailed> {
-    let selectors: ExtractorResultDetailed = {
+  ): Promise<ExtractorResultDetailedSet> {
+    let selectors: ExtractorResultDetailedSet = {
       attributes: {
-        names: [],
-        values: [],
+        names: new Set(),
+        values: new Set(),
       },
-      classes: [],
-      ids: [],
-      tags: [],
-      undetermined: [],
+      classes: new Set(),
+      ids: new Set(),
+      tags: new Set(),
+      undetermined: new Set(),
     };
 
     for (const globfile of files) {
@@ -426,16 +432,16 @@ class PurgeCSS {
   public async extractSelectorsFromString(
     content: RawContent[],
     extractors: Extractors[]
-  ): Promise<ExtractorResultDetailed> {
-    let selectors: ExtractorResultDetailed = {
+  ): Promise<ExtractorResultDetailedSet> {
+    let selectors: ExtractorResultDetailedSet = {
       attributes: {
-        names: [],
-        values: [],
+        names: new Set(),
+        values: new Set(),
       },
-      classes: [],
-      ids: [],
-      tags: [],
-      undetermined: [],
+      classes: new Set(),
+      ids: new Set(),
+      tags: new Set(),
+      undetermined: new Set(),
     };
 
     for (const { raw, extension } of content) {
@@ -476,7 +482,7 @@ class PurgeCSS {
    */
   private async evaluateRule(
     node: postcss.Node,
-    selectors: ExtractorResultDetailed
+    selectors: ExtractorResultDetailedSet
   ): Promise<void> {
     // exit if is in ignoring state activated by an ignore comment
     if (this.ignore) {
@@ -551,7 +557,7 @@ class PurgeCSS {
    */
   public async getPurgedCSS(
     cssOptions: Array<string | RawCSS>,
-    selectors: ExtractorResultDetailed
+    selectors: ExtractorResultDetailedSet
   ): Promise<ResultPurge[]> {
     const sources = [];
 
@@ -701,7 +707,7 @@ class PurgeCSS {
    */
   private shouldKeepSelector(
     selector: selectorParser.Selector,
-    selectorsFromExtractor: ExtractorResultDetailed
+    selectorsFromExtractor: ExtractorResultDetailedSet
   ): boolean {
     // ignore the selector if it is inside a pseudo class
     if (isInPseudoClass(selector)) return true;
@@ -768,7 +774,7 @@ class PurgeCSS {
    */
   public walkThroughCSS(
     root: postcss.Root,
-    selectors: ExtractorResultDetailed
+    selectors: ExtractorResultDetailedSet
   ): void {
     root.walk((node) => {
       if (node.type === "rule") {
